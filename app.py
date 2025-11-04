@@ -20,6 +20,8 @@ import torch
 import warnings
 from huggingface_hub import login
 from langdetect import detect, DetectorFactory
+import warnings
+warnings.filterwarnings("ignore", message="Tried to instantiate class '__path__._path'")
 
 DetectorFactory.seed = 0  # for consistent detection
 
