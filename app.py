@@ -1,15 +1,16 @@
 # app.py
-# Streamlit: Deutsch–Nepali–English Interactive Tutor (Colab + Streamlit compatible)
-# Uses: Helsinki (De/En), Hemg (En->Ne & Ne->En - attempting with one model)
+# Streamlit: Deutsch–Nepali–English Interactive Tutor (Light Stable Version)
+# Uses: Helsinki (De↔En), Hemg (En→Ne), fallback for Ne→En
 
 import streamlit as st
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM, pipeline
 from gtts import gTTS
 import tempfile
 import torch
+import warnings
 
-
-
+# Silence harmless warnings
+warnings.filterwarnings("ignore", category=UserWarning)
 
 # --------------------------------
 # Page Setup
@@ -33,19 +34,18 @@ def load_models():
     tok_en_de = AutoTokenizer.from_pretrained(model_name_en_de)
     mod_en_de = AutoModelForSeq2SeqLM.from_pretrained(model_name_en_de)
 
-    # English ↔ Nepali (Using Hemg model for both directions)
-    model_name_en_ne_ne_en = "Hemg/english-To-Nepali-TRanslate"
-    tok_en_ne_ne_en = AutoTokenizer.from_pretrained(model_name_en_ne_ne_en)
-    mod_en_ne_ne_en = AutoModelForSeq2SeqLM.from_pretrained(model_name_en_ne_ne_en)
+    # English → Nepali (Hemg)
+    model_name_en_ne = "Hemg/english-To-Nepali-TRanslate"
+    tok_en_ne = AutoTokenizer.from_pretrained(model_name_en_ne, use_fast=False)
+    mod_en_ne = AutoModelForSeq2SeqLM.from_pretrained(model_name_en_ne)
 
     # Whisper tiny for speech-to-text
     whisper_asr = pipeline("automatic-speech-recognition", model="openai/whisper-tiny")
 
-    return (tok_de_en, mod_de_en, tok_en_de, mod_en_de, tok_en_ne_ne_en, mod_en_ne_ne_en, whisper_asr)
+    return (tok_de_en, mod_de_en, tok_en_de, mod_en_de, tok_en_ne, mod_en_ne, whisper_asr)
 
 
-# Update the return values to match the new load_models function
-tok_de_en, mod_de_en, tok_en_de, mod_en_de, tok_en_ne_ne_en, mod_en_ne_ne_en, whisper_asr = load_models()
+tok_de_en, mod_de_en, tok_en_de, mod_en_de, tok_en_ne, mod_en_ne, whisper_asr = load_models()
 
 # --------------------------------
 # Translation Function
@@ -65,17 +65,24 @@ def translate_text(text, source, target):
         outputs = mod_en_de.generate(**inputs)
         return tok_en_de.decode(outputs[0], skip_special_tokens=True)
 
-    # English → Nepali (Using Hemg model)
+    # English → Nepali
     elif source == "English" and target == "Nepali":
-        inputs = tok_en_ne_ne_en(text, return_tensors="pt", padding=True)
-        outputs = mod_en_ne_ne_en.generate(**inputs)
-        return tok_en_ne_ne_en.decode(outputs[0], skip_special_tokens=True)
+        try:
+            inputs = tok_en_ne.prepare_seq2seq_batch([text], return_tensors="pt")
+            outputs = mod_en_ne.generate(**inputs, max_new_tokens=80)
+            return tok_en_ne.decode(outputs[0], skip_special_tokens=True)
+        except Exception as e:
+            return f"⚠️ English→Nepali translation failed: {str(e)}"
 
-    # Nepali → English (Using Hemg model - may not be optimal)
+    # Nepali → English (Fallback)
     elif source == "Nepali" and target == "English":
-        inputs = tok_en_ne_ne_en(text, return_tensors="pt", padding=True)
-        outputs = mod_en_ne_ne_en.generate(**inputs)
-        return tok_en_ne_ne_en.decode(outputs[0], skip_special_tokens=True)
+        try:
+            # Attempt reverse translation (experimental)
+            inputs = tok_en_ne.prepare_seq2seq_batch([text], return_tensors="pt")
+            outputs = mod_en_ne.generate(**inputs, max_new_tokens=80)
+            return tok_en_ne.decode(outputs[0], skip_special_tokens=True)
+        except Exception:
+            return "⚠️ Nepali→English translation not available currently."
 
     # Nepali → German (via English)
     elif source == "Nepali" and target == "German":
