@@ -10,4 +10,5 @@ easyocr
 numpy
 pillow
 openai-whisper
+langdetect
 huggingface-hub==0.26.2
