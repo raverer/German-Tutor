@@ -6,5 +6,8 @@ gtts==2.5.4
 soundfile==0.13.1
 pydub==0.25.1
 SpeechRecognition
+easyocr
+numpy
+pillow
 openai-whisper
 huggingface-hub==0.26.2
