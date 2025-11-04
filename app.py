@@ -31,7 +31,7 @@ st.write("🎧 Speak or type in German, English, or Nepali — I'll translate an
 # --------------------------------
 try:
     HF_TOKEN = st.secrets["HF_TOKEN"]
-    login(token="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")
+    login(token=HF_TOKEN)
     st.sidebar.success("🔐 Logged in to Hugging Face successfully!")
 except Exception as e:
     st.sidebar.warning(f"⚠️ Hugging Face login skipped or failed: {e}")
