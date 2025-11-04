@@ -1,11 +1,12 @@
 # ===========================================
-# Deutsch–Nepali–English AI Tutor + Image OCR
+# Deutsch–Nepali–English AI Tutor + Image OCR + Auto Language Detection
 # by Rajib Rawal
 # ===========================================
 # Features:
 #   1️⃣ Type-to-Translate
 #   2️⃣ Speak-to-Translate (Whisper)
 #   3️⃣ Image-to-Translate (OCR)
+#   4️⃣ Automatic Language Detection (German, English, Nepali)
 # ===========================================
 
 import streamlit as st
@@ -18,6 +19,9 @@ from PIL import Image
 import torch
 import warnings
 from huggingface_hub import login
+from langdetect import detect, DetectorFactory
+
+DetectorFactory.seed = 0  # for consistent detection
 
 # --------------------------------
 # Setup
@@ -26,7 +30,7 @@ warnings.filterwarnings("ignore")
 st.set_page_config(page_title="Deutsch–Nepali Tutor", page_icon="🗣️", layout="centered")
 
 st.title("🗣️ Deutsch–Nepali–English AI Tutor")
-st.write("🎧 Type, speak, or upload an image — I’ll translate and speak it back!")
+st.write("🎧 Type, speak, or upload an image — I’ll detect the language, translate, and speak it back!")
 
 # --------------------------------
 # Login to Hugging Face (token stored securely in secrets)
@@ -64,7 +68,7 @@ def load_models():
     # --- Whisper Speech-to-Text ---
     whisper_asr = pipeline("automatic-speech-recognition", model="openai/whisper-tiny")
 
-    # --- OCR (Image-to-Text) ---
+    # --- OCR Readers ---
     ocr_reader_en_ne = easyocr.Reader(['en', 'ne'])
     ocr_reader_en_de = easyocr.Reader(['en', 'de'])
 
@@ -132,9 +136,24 @@ def translate_text(text, source, target):
 
 
 # --------------------------------
+# Auto Language Detection
+# --------------------------------
+def detect_language(text):
+    try:
+        lang_code = detect(text)
+        if lang_code.startswith("de"):
+            return "German"
+        elif lang_code.startswith("ne"):
+            return "Nepali"
+        else:
+            return "English"
+    except Exception:
+        return "English"
+
+
+# --------------------------------
 # Streamlit Interface
 # --------------------------------
-source_lang = st.selectbox("🎙️ Source Language", ["German", "English", "Nepali"])
 target_lang = st.selectbox("🗣️ Target Language", ["German", "English", "Nepali"])
 mode = st.radio("Input Mode", ["⌨️ Type", "🎤 Speak", "🖼️ Image"])
 
@@ -166,11 +185,7 @@ elif mode == "🖼️ Image":
         st.image(image, caption="Uploaded Image", use_column_width=True)
 
         with st.spinner("🔍 Extracting text from image..."):
-            if source_lang in ["English", "Nepali"]:
-                results = ocr_reader_en_ne.readtext(np.array(image))
-            else:
-                results = ocr_reader_en_de.readtext(np.array(image))
-
+            results = ocr_reader_en_de.readtext(np.array(image)) + ocr_reader_en_ne.readtext(np.array(image))
             extracted_text = " ".join([res[1] for res in results])
         st.text_area("📝 Extracted Text", extracted_text, height=100)
         text_input = extracted_text
@@ -178,6 +193,10 @@ elif mode == "🖼️ Image":
 # --- TRANSLATE BUTTON ---
 if st.button("Translate"):
     if text_input:
+        with st.spinner("Detecting language..."):
+            source_lang = detect_language(text_input)
+            st.info(f"🧠 Detected Language: {source_lang}")
+
         with st.spinner("Translating..."):
             translated = translate_text(text_input, source_lang, target_lang)
             st.success("✅ Translation complete!")
@@ -199,4 +218,4 @@ if st.button("Translate"):
         st.warning("Please enter, speak, or upload some text first.")
 
 st.markdown("---")
-st.caption("Built with ❤️ by Rajib Rawal using Streamlit, Hugging Face, Whisper & EasyOCR")
+st.caption("Built with ❤️ by Rajib Rawal using Streamlit, Hugging Face, Whisper, EasyOCR & langdetect")
