@@ -1,11 +1,8 @@
 streamlit==1.38.0
 transformers==4.42.3
-torch==2.5.1
+torch==2.5.1+cpu
 sentencepiece
 gtts
-soundfile
 SpeechRecognition
-tokenizers>=0.15.0
-huggingface-hub>=0.22.0
-
---extra-index-url https://download.pytorch.org/whl/cpu
+openai-whisper
+huggingface-hub
