@@ -12,6 +12,10 @@ import warnings
 # Silence harmless warnings
 warnings.filterwarnings("ignore", category=UserWarning)
 
+git add app.py
+git commit -m "Light stable version with EN→NE and fallback NE→EN"
+git push
+
 # --------------------------------
 # Page Setup
 # --------------------------------
