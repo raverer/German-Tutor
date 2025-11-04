@@ -11,7 +11,7 @@ from huggingface_hub import login
 
 # Log in to Hugging Face Hub
 try:
-    login(token=userdata.get("HF_TOKEN"))
+    login(token=userdata.get("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"))
 except Exception as e:
     print(f"Could not log in to Hugging Face Hub: {e}")
 
