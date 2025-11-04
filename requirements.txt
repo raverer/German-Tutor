@@ -4,6 +4,7 @@ torch==2.5.1
 sentencepiece==0.2.1
 gtts==2.5.4
 soundfile==0.13.1
+pydub==0.25.1
 SpeechRecognition
 openai-whisper
 huggingface-hub==0.26.2
