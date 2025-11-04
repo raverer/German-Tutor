@@ -1,8 +1,9 @@
 streamlit==1.38.0
 transformers==4.42.3
 torch==2.5.1
-sentencepiece
-gtts
+sentencepiece==0.2.1
+gtts==2.5.4
+soundfile==0.13.1
 SpeechRecognition
 openai-whisper
-huggingface-hub
+huggingface-hub==0.26.2
