@@ -7,14 +7,8 @@ from transformers import AutoTokenizer, AutoModelForSeq2SeqLM, pipeline
 from gtts import gTTS
 import tempfile
 import torch
-from huggingface_hub import login
-from google.colab import userdata
 
-# Log in to Hugging Face Hub
-try:
-    login(token=userdata.get("HF_TOKEN"))
-except Exception as e:
-    print(f"Could not log in to Hugging Face Hub: {e}")
+
 
 
 # --------------------------------
