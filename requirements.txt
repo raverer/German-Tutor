@@ -11,4 +11,5 @@ numpy
 pillow
 openai-whisper
 langdetect
+librosa
 huggingface-hub==0.26.2
