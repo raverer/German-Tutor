@@ -44,7 +44,7 @@ def text_to_speech(text, lang_code="en"):
         audio_file = open("temp_tts.mp3", "rb").read()
         b64 = base64.b64encode(audio_file).decode()
         md = f"""
-        <audio controls autoplay>
+        <audio controls>
             <source src="data:audio/mp3;base64,{b64}" type="audio/mp3">
         </audio>
         """
@@ -94,7 +94,7 @@ def transcribe_long_audio_file(path, chunk_length_s=30, overlap_s=2):
         end = min(start + chunk_samples, len(audio))
         chunk = audio[start:end]
         chunk_input = {"array": chunk, "sampling_rate": sr}
-        res = asr(chunk_input)
+        res = asr(chunk_input, generate_kwargs={"language": "en"})
         texts.append(res.get("text", ""))
         if end == len(audio):
             break
@@ -185,7 +185,7 @@ elif mode.startswith("🖼️"):
     img_file = st.file_uploader("Image", type=["jpg", "jpeg", "png"])
     if img_file:
         img = resize_image(img_file)
-        st.image(img, caption="Processed Image (Resized <1MB)", use_container_width=True)
+        st.image(img, caption="Processed Image (Resized <1MB)", use_column_width=True)
         with st.spinner("Extracting text..."):
             reader = get_ocr()
             text = "\n".join(reader.readtext(np.array(img), detail=0))
