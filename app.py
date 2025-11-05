@@ -181,9 +181,15 @@ if mode.startswith("🎤"):
 
 # ---------------- OCR ----------------
 from langdetect import detect, DetectorFactory
+# Your helper functions must be defined/imported somewhere:
+# resize_image, get_ocr, de_to_en, de_to_ne, en_to_de, en_to_ne, ne_to_en, ne_to_de, text_to_speech, clear_memory
+
 DetectorFactory.seed = 0  # ensures consistent detection
 
-elif mode.startswith("🖼️"):
+# Example: mode is selected by the user (so elif makes sense)
+mode = st.sidebar.selectbox("Choose Mode:", ["✍️ Text Input", "🖼️ Image OCR"])
+
+if mode.startswith("🖼️"):
     st.subheader("Upload Image for OCR & Translation")
     img_file = st.file_uploader("Image", type=["jpg", "jpeg", "png"])
 
@@ -239,8 +245,10 @@ elif mode.startswith("🖼️"):
 
                 # ---------- Optional TTS ----------
                 tts_lang = "en"
-                if target_lang == "German": tts_lang = "de"
-                elif target_lang == "Nepali": tts_lang = "ne"
+                if target_lang == "German":
+                    tts_lang = "de"
+                elif target_lang == "Nepali":
+                    tts_lang = "ne"
 
                 tts_html = text_to_speech(translated, tts_lang)
                 if tts_html:
