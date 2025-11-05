@@ -1,146 +1,202 @@
+# ===========================================
+# Deutsch–Nepali–English AI Tutor + Image OCR
+# by Rajib Rawal
+# ===========================================
+# Features:
+#   1️⃣ Type-to-Translate
+#   2️⃣ Speak-to-Translate (Whisper)
+#   3️⃣ Image-to-Translate (OCR)
+# ===========================================
+
 import streamlit as st
-import torch, gc, io, librosa, numpy as np
-from PIL import Image
-import easyocr
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM, pipeline
+from gtts import gTTS
+import easyocr
+import tempfile
+import numpy as np
+from PIL import Image
+import torch
+import warnings
+from huggingface_hub import login
 
-# -------------------------------------------------------
-# Streamlit Page Config
-# -------------------------------------------------------
-st.set_page_config(page_title="Multimodal Translator", layout="centered")
-st.title("🎧🖼️ Multimodal Translator")
-st.caption("Whisper-Base (chunked) + EasyOCR + English→Nepali Translation — Optimized for Streamlit Cloud")
+# --------------------------------
+# Setup
+# --------------------------------
+warnings.filterwarnings("ignore")
+st.set_page_config(page_title="Deutsch–Nepali Tutor", page_icon="🗣️", layout="centered")
 
-# -------------------------------------------------------
-# Utility Functions
-# -------------------------------------------------------
-def clear_memory():
-    """Free up memory safely after each mode."""
-    gc.collect()
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
+st.title("🗣️ Deutsch–Nepali–English AI Tutor")
+st.write("🎧 Type, speak, or upload an image — I’ll translate and speak it back!")
 
-def resize_image(uploaded_file):
-    """Resize uploaded image to under ~1MB and within 1280px."""
-    img = Image.open(uploaded_file)
-    img.thumbnail((1280, 1280))
-    buf = io.BytesIO()
-    img.save(buf, format="JPEG", quality=85)
-    buf.seek(0)
-    return Image.open(buf)
+# --------------------------------
+# Login to Hugging Face (token stored securely in secrets)
+# --------------------------------
+try:
+    HF_TOKEN = st.secrets["HF_TOKEN"]
+    login(token=HF_TOKEN)
+    st.sidebar.success("🔐 Logged in to Hugging Face successfully!")
+except Exception as e:
+    st.sidebar.warning(f"⚠️ Hugging Face login skipped or failed: {e}")
 
-# -------------------------------------------------------
-# Cached Model Loaders (Lazy Loading)
-# -------------------------------------------------------
+# --------------------------------
+# Model Loader
+# --------------------------------
 @st.cache_resource
-def load_whisper():
-    """Load Whisper Base ASR model."""
-    return pipeline("automatic-speech-recognition", model="openai/whisper-base")
+def load_models():
+    # --- Translation Models ---
+    model_name_de_en = "Helsinki-NLP/opus-mt-de-en"
+    model_name_en_de = "Helsinki-NLP/opus-mt-en-de"
+    model_name_en_ne = "Hemg/english-To-Nepali-TRanslate"
+    model_name_ne_en = "iamTangsang/MarianMT-Nepali-to-English"
 
-@st.cache_resource
-def load_ocr():
-    """Load EasyOCR (English)."""
-    return easyocr.Reader(['en'], gpu=False)
+    tok_de_en = AutoTokenizer.from_pretrained(model_name_de_en)
+    mod_de_en = AutoModelForSeq2SeqLM.from_pretrained(model_name_de_en)
 
-@st.cache_resource
-def load_translation():
-    """Load English→Nepali Translation Model."""
-    model = AutoModelForSeq2SeqLM.from_pretrained("Hemg/english-To-Nepali-TRanslate")
-    tokenizer = AutoTokenizer.from_pretrained("Hemg/english-To-Nepali-TRanslate")
-    return model, tokenizer
+    tok_en_de = AutoTokenizer.from_pretrained(model_name_en_de)
+    mod_en_de = AutoModelForSeq2SeqLM.from_pretrained(model_name_en_de)
 
-# -------------------------------------------------------
-# Whisper Chunking Transcription
-# -------------------------------------------------------
-def transcribe_long_audio(file_path, chunk_length_s=30, overlap_s=2):
-    """Split long audio into 30s chunks and transcribe sequentially."""
-    asr = load_whisper()
-    audio, sr = librosa.load(file_path, sr=16000)
-    chunk_samples = int(chunk_length_s * sr)
-    overlap_samples = int(overlap_s * sr)
-    transcriptions = []
+    tok_en_ne = AutoTokenizer.from_pretrained(model_name_en_ne)
+    mod_en_ne = AutoModelForSeq2SeqLM.from_pretrained(model_name_en_ne)
 
-    for start in range(0, len(audio), chunk_samples - overlap_samples):
-        end = min(start + chunk_samples, len(audio))
-        chunk = audio[start:end]
-        chunk_input = {"array": chunk, "sampling_rate": sr}
-        result = asr(chunk_input)
-        transcriptions.append(result["text"])
-        if end == len(audio):
-            break
+    tok_ne_en = AutoTokenizer.from_pretrained(model_name_ne_en)
+    mod_ne_en = AutoModelForSeq2SeqLM.from_pretrained(model_name_ne_en)
 
-    del asr
-    clear_memory()
-    return " ".join(transcriptions)
+    # --- Whisper Speech-to-Text ---
+    whisper_asr = pipeline("automatic-speech-recognition", model="openai/whisper-tiny")
 
-# -------------------------------------------------------
-# UI Mode Selector
-# -------------------------------------------------------
-mode = st.radio("Select Mode:", [
-    "🎤 Audio → Text (Whisper-Base)",
-    "🖼️ Image → Text (EasyOCR)",
-    "🈶 English → Nepali Translation"
-])
+    # --- OCR (Image-to-Text) ---
+    ocr_reader_en_ne = easyocr.Reader(['en', 'ne'])
+    ocr_reader_en_de = easyocr.Reader(['en', 'de'])
 
-# -------------------------------------------------------
-# AUDIO MODE — Whisper Base (Chunked)
-# -------------------------------------------------------
-if mode == "🎤 Audio → Text (Whisper-Base)":
-    st.subheader("Upload Audio File (MP3/WAV/M4A)")
-    audio_file = st.file_uploader("Upload audio", type=["mp3", "wav", "m4a"])
+    return (
+        tok_de_en, mod_de_en,
+        tok_en_de, mod_en_de,
+        tok_en_ne, mod_en_ne,
+        tok_ne_en, mod_ne_en,
+        whisper_asr,
+        ocr_reader_en_ne, ocr_reader_en_de
+    )
 
-    if audio_file is not None:
-        st.audio(audio_file)
-        with open("temp_audio.wav", "wb") as f:
-            f.write(audio_file.read())
+# Load all models
+(
+    tok_de_en, mod_de_en,
+    tok_en_de, mod_en_de,
+    tok_en_ne, mod_en_ne,
+    tok_ne_en, mod_ne_en,
+    whisper_asr,
+    ocr_reader_en_ne, ocr_reader_en_de
+) = load_models()
 
-        with st.spinner("🔹 Transcribing audio with Whisper Base (chunked)..."):
-            text = transcribe_long_audio("temp_audio.wav")
-            st.success("✅ Transcription Complete!")
-            st.text_area("Transcribed Text:", text, height=200)
+st.sidebar.success("✅ All models loaded successfully!")
 
-# -------------------------------------------------------
-# IMAGE MODE — EasyOCR
-# -------------------------------------------------------
-elif mode == "🖼️ Image → Text (EasyOCR)":
-    st.subheader("Upload Image")
-    img_file = st.file_uploader("Upload image", type=["jpg", "jpeg", "png"])
+# --------------------------------
+# Translation Function
+# --------------------------------
+def translate_text(text, source, target):
+    text = text.strip()
+    if not text:
+        return "⚠️ No text provided."
 
-    if img_file is not None:
-        img = resize_image(img_file)
-        st.image(img, caption="Processed Image (Resized <1MB)", use_container_width=True)
+    # --- Direct Translations ---
+    if source == "German" and target == "English":
+        inputs = tok_de_en(text, return_tensors="pt", padding=True)
+        outputs = mod_de_en.generate(**inputs)
+        return tok_de_en.decode(outputs[0], skip_special_tokens=True)
 
-        with st.spinner("🔹 Extracting text using EasyOCR..."):
-            reader = load_ocr()
-            result = reader.readtext(np.array(img), detail=0)
-            text = "\n".join(result)
-            st.success("✅ OCR Complete!")
-            st.text_area("Extracted Text:", text, height=200)
+    elif source == "English" and target == "German":
+        inputs = tok_en_de(text, return_tensors="pt", padding=True)
+        outputs = mod_en_de.generate(**inputs)
+        return tok_en_de.decode(outputs[0], skip_special_tokens=True)
 
-        del reader
-        clear_memory()
+    elif source == "English" and target == "Nepali":
+        inputs = tok_en_ne(text, return_tensors="pt", padding=True)
+        outputs = mod_en_ne.generate(**inputs, max_new_tokens=80)
+        return tok_en_ne.decode(outputs[0], skip_special_tokens=True)
 
-# -------------------------------------------------------
-# TRANSLATION MODE — English → Nepali
-# -------------------------------------------------------
-else:
-    st.subheader("English → Nepali Translation")
-    text_input = st.text_area("Enter English text:")
+    elif source == "Nepali" and target == "English":
+        inputs = tok_ne_en(text, return_tensors="pt", padding=True)
+        outputs = mod_ne_en.generate(**inputs, max_new_tokens=80)
+        return tok_ne_en.decode(outputs[0], skip_special_tokens=True)
 
-    if st.button("Translate"):
-        if text_input.strip():
-            with st.spinner("🔹 Translating..."):
-                model, tokenizer = load_translation()
-                inputs = tokenizer(text_input, return_tensors="pt")
-                outputs = model.generate(**inputs, max_new_tokens=100)
-                translated_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
-                st.success("✅ Translation Complete!")
-                st.text_area("Nepali Translation:", translated_text, height=150)
+    # --- Cross-Language via English ---
+    elif source == "German" and target == "Nepali":
+        english = translate_text(text, "German", "English")
+        return translate_text(english, "English", "Nepali")
 
-            del model, tokenizer
-            clear_memory()
-        else:
-            st.warning("Please enter some English text first!")
+    elif source == "Nepali" and target == "German":
+        english = translate_text(text, "Nepali", "English")
+        return translate_text(english, "English", "German")
+
+    else:
+        return "⚠️ Unsupported translation direction."
+
+
+# --------------------------------
+# Streamlit Interface
+# --------------------------------
+source_lang = st.selectbox("🎙️ Source Language", ["German", "English", "Nepali"])
+target_lang = st.selectbox("🗣️ Target Language", ["German", "English", "Nepali"])
+mode = st.radio("Input Mode", ["⌨️ Type", "🎤 Speak", "🖼️ Image"])
+
+text_input = ""
+
+# --- 1️⃣ TYPE MODE ---
+if mode == "⌨️ Type":
+    text_input = st.text_area("Enter text:", height=100)
+
+# --- 2️⃣ SPEAK MODE ---
+elif mode == "🎤 Speak":
+    st.write("🎧 Upload or record your voice (WAV/MP3)")
+    audio_file = st.file_uploader("Upload file", type=["wav", "mp3"])
+
+    if audio_file:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
+            tmp.write(audio_file.read())
+            tmp_path = tmp.name
+        with st.spinner("Transcribing speech..."):
+            result = whisper_asr(tmp_path)
+            text_input = result["text"]
+            st.success(f"🗒️ Transcribed: {text_input}")
+
+# --- 3️⃣ IMAGE MODE ---
+elif mode == "🖼️ Image":
+    image_file = st.file_uploader("📷 Upload image", type=["png", "jpg", "jpeg"])
+    if image_file:
+        image = Image.open(image_file)
+        st.image(image, caption="Uploaded Image", use_column_width=True)
+
+        with st.spinner("🔍 Extracting text from image..."):
+            if source_lang in ["English", "Nepali"]:
+                results = ocr_reader_en_ne.readtext(np.array(image))
+            else:
+                results = ocr_reader_en_de.readtext(np.array(image))
+
+            extracted_text = " ".join([res[1] for res in results])
+        st.text_area("📝 Extracted Text", extracted_text, height=100)
+        text_input = extracted_text
+
+# --- TRANSLATE BUTTON ---
+if st.button("Translate"):
+    if text_input:
+        with st.spinner("Translating..."):
+            translated = translate_text(text_input, source_lang, target_lang)
+            st.success("✅ Translation complete!")
+            st.text_area("Translated Text:", translated, height=100)
+
+            # --- Speech output ---
+            try:
+                tts_lang = (
+                    "de" if target_lang == "German"
+                    else "en" if target_lang == "English"
+                    else "ne"
+                )
+                tts = gTTS(translated, lang=tts_lang)
+                tts.save("output.mp3")
+                st.audio("output.mp3", format="audio/mp3")
+            except Exception:
+                st.warning("Speech output not available for this language.")
+    else:
+        st.warning("Please enter, speak, or upload some text first.")
 
 st.markdown("---")
-st.caption("Built with ❤️ by Rajib Rawal using Streamlit.")
+st.caption("Built with ❤️ by Rajib Rawal using Streamlit")
