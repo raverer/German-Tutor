@@ -1,16 +1,15 @@
-# app.py
 import streamlit as st
-import torch, gc, io, librosa, numpy as np
+import torch, gc, io, librosa, numpy as np, base64
 from PIL import Image
 import easyocr
 from transformers import pipeline, AutoTokenizer, AutoModelForSeq2SeqLM
+from gtts import gTTS
 
 # -------------------------------------------------------
 # Streamlit Config
 # -------------------------------------------------------
-st.set_page_config(page_title="Multimodal Translator (Final)", layout="centered")
-st.title("🎧🖼️ Multimodal Translator — Speech · OCR · Text")
-st.caption("Whisper-Base (chunked) + EasyOCR + DE↔EN + EN↔NE + NE→EN (iamTangsang) — Optimized for Streamlit Cloud")
+st.set_page_config(page_title="German Tutor(Final)", layout="centered")
+st.title("German Translator — Audio · OCR · Text")
 
 # -------------------------------------------------------
 # Model IDs
@@ -37,35 +36,45 @@ def resize_image(uploaded_file, max_px=1280, jpeg_quality=85):
     buf.seek(0)
     return Image.open(buf)
 
+def text_to_speech(text, lang_code="en"):
+    """Generate speech audio for translated text."""
+    try:
+        tts = gTTS(text=text, lang=lang_code)
+        tts.save("temp_tts.mp3")
+        audio_file = open("temp_tts.mp3", "rb").read()
+        b64 = base64.b64encode(audio_file).decode()
+        md = f"""
+        <audio controls autoplay>
+            <source src="data:audio/mp3;base64,{b64}" type="audio/mp3">
+        </audio>
+        """
+        return md
+    except Exception as e:
+        st.warning(f"TTS failed: {e}")
+        return None
+
 # -------------------------------------------------------
-# Cached Model Loaders (lazy loading)
+# Cached Model Loaders
 # -------------------------------------------------------
 @st.cache_resource
-def get_whisper():
-    return pipeline("automatic-speech-recognition", model=MODEL_WHISPER)
-
+def get_whisper(): return pipeline("automatic-speech-recognition", model=MODEL_WHISPER)
 @st.cache_resource
-def get_ocr():
-    return easyocr.Reader(['en'], gpu=False)
-
+def get_ocr(): return easyocr.Reader(['en'], gpu=False)
 @st.cache_resource
 def get_de_en():
     tok = AutoTokenizer.from_pretrained(MODEL_DE_TO_EN)
     model = AutoModelForSeq2SeqLM.from_pretrained(MODEL_DE_TO_EN)
     return model, tok
-
 @st.cache_resource
 def get_en_de():
     tok = AutoTokenizer.from_pretrained(MODEL_EN_TO_DE)
     model = AutoModelForSeq2SeqLM.from_pretrained(MODEL_EN_TO_DE)
     return model, tok
-
 @st.cache_resource
 def get_en_ne():
     tok = AutoTokenizer.from_pretrained(MODEL_EN_TO_NE)
     model = AutoModelForSeq2SeqLM.from_pretrained(MODEL_EN_TO_NE)
     return model, tok
-
 @st.cache_resource
 def get_ne_en():
     tok = AutoTokenizer.from_pretrained(MODEL_NE_TO_EN)
@@ -93,53 +102,82 @@ def transcribe_long_audio_file(path, chunk_length_s=30, overlap_s=2):
     return " ".join(texts)
 
 # -------------------------------------------------------
-# Translation Helper
+# Translation Helpers
 # -------------------------------------------------------
 def translate_with_model(model_tok_pair, text, max_new_tokens=200):
     model, tokenizer = model_tok_pair
     inputs = tokenizer(text, return_tensors="pt", truncation=True)
     outputs = model.generate(**inputs, max_new_tokens=max_new_tokens)
-    decoded = tokenizer.decode(outputs[0], skip_special_tokens=True)
-    return decoded
+    return tokenizer.decode(outputs[0], skip_special_tokens=True)
 
-# -------------------------------------------------------
-# Translation Pipelines
-# -------------------------------------------------------
 def de_to_en(t): return translate_with_model(get_de_en(), t)
 def en_to_de(t): return translate_with_model(get_en_de(), t)
 def en_to_ne(t): return translate_with_model(get_en_ne(), t)
 def ne_to_en(t): return translate_with_model(get_ne_en(), t)
-
-def de_to_ne(t):
-    en = de_to_en(t)
-    return en_to_ne(en)
-
-def ne_to_de(t):
-    en = ne_to_en(t)
-    return en_to_de(en)
+def de_to_ne(t): return en_to_ne(de_to_en(t))
+def ne_to_de(t): return en_to_de(ne_to_en(t))
 
 # -------------------------------------------------------
 # Streamlit Interface
 # -------------------------------------------------------
 mode = st.radio("Select Mode:", [
-    "🎤 Audio → Text (Whisper-Base)",
+    "🎤 Audio → Translation (with Speech Output)",
     "🖼️ Image → Text (EasyOCR)",
     "🔤 Text Translation (DE↔EN↔NE)"
 ])
 
-# ---------------- AUDIO ----------------
+# ---------------- AUDIO → TRANSLATION ----------------
 if mode.startswith("🎤"):
-    st.subheader("Upload Audio File (mp3 / wav / m4a)")
-    audio_file = st.file_uploader("Audio", type=["mp3", "wav", "m4a"])
+    st.subheader("Upload Audio in German, English, or Nepali")
+    target_lang = st.selectbox("Translate To:", ["English", "German", "Nepali"])
+    audio_file = st.file_uploader("Upload Audio", type=["mp3", "wav", "m4a"])
+
     if audio_file:
         st.audio(audio_file)
         tmp_path = "temp_audio.wav"
         with open(tmp_path, "wb") as f:
             f.write(audio_file.read())
-        with st.spinner("Transcribing with Whisper-Base (chunked)..."):
-            text = transcribe_long_audio_file(tmp_path)
-            st.success("✅ Transcription Complete")
-            st.text_area("Transcribed Text", value=text, height=250)
+
+        with st.spinner("🎧 Transcribing audio..."):
+            transcribed = transcribe_long_audio_file(tmp_path)
+        st.text_area("Transcribed Text:", transcribed, height=200)
+
+        # Auto language detection (simple heuristic)
+        lang_detect = "en"
+        if any(ch in transcribed for ch in "äöüß"): lang_detect = "de"
+        elif any(ord(ch) > 2300 for ch in transcribed): lang_detect = "ne"
+
+        # Choose translation path
+        with st.spinner(f"🌐 Translating from {lang_detect.upper()} → {target_lang} ..."):
+            if lang_detect == "de" and target_lang == "English":
+                translated = de_to_en(transcribed)
+            elif lang_detect == "de" and target_lang == "Nepali":
+                translated = de_to_ne(transcribed)
+            elif lang_detect == "en" and target_lang == "German":
+                translated = en_to_de(transcribed)
+            elif lang_detect == "en" and target_lang == "Nepali":
+                translated = en_to_ne(transcribed)
+            elif lang_detect == "ne" and target_lang == "English":
+                translated = ne_to_en(transcribed)
+            elif lang_detect == "ne" and target_lang == "German":
+                translated = ne_to_de(transcribed)
+            else:
+                translated = transcribed  # same language
+
+        st.success("✅ Translation Complete")
+        st.text_area("Translated Text:", translated, height=200)
+
+        # Choose correct TTS language code
+        tts_lang = "en"
+        if target_lang == "German": tts_lang = "de"
+        elif target_lang == "Nepali": tts_lang = "ne"
+
+        # Play translated audio
+        tts_html = text_to_speech(translated, tts_lang)
+        if tts_html:
+            st.markdown(tts_html, unsafe_allow_html=True)
+            with open("temp_tts.mp3", "rb") as audio_f:
+                st.download_button("⬇️ Download Translated Audio", data=audio_f, file_name="translated_audio.mp3")
 
 # ---------------- OCR ----------------
 elif mode.startswith("🖼️"):
@@ -147,50 +185,53 @@ elif mode.startswith("🖼️"):
     img_file = st.file_uploader("Image", type=["jpg", "jpeg", "png"])
     if img_file:
         img = resize_image(img_file)
-        st.image(img, use_container_width=True, caption="Resized image (<1 MB)")
-        with st.spinner("Extracting text with EasyOCR..."):
+        st.image(img, caption="Processed Image (Resized <1MB)", use_container_width=True)
+        with st.spinner("Extracting text..."):
             reader = get_ocr()
-            txt = "\n".join(reader.readtext(np.array(img), detail=0))
-            st.success("✅ OCR Complete")
-            st.text_area("Extracted Text", value=txt, height=250)
+            text = "\n".join(reader.readtext(np.array(img), detail=0))
+        st.success("✅ OCR Complete")
+        st.text_area("Extracted Text:", text, height=200)
         clear_memory()
 
-# ---------------- TRANSLATION ----------------
+# ---------------- TEXT ----------------
 else:
     st.subheader("Text Translation")
-    direction = st.selectbox("Select Translation Direction", [
-        "German → English",
-        "English → German",
-        "English → Nepali",
-        "Nepali → English",
-        "German → Nepali (via English)",
-        "Nepali → German (via English)"
+    direction = st.selectbox("Translation Direction:", [
+        "German → English", "English → German",
+        "English → Nepali", "Nepali → English",
+        "German → Nepali (via English)", "Nepali → German (via English)"
     ])
-    text_in = st.text_area("Enter text here:", height=200)
+    text_in = st.text_area("Enter Text:", height=150)
 
     if st.button("Translate"):
         if not text_in.strip():
-            st.warning("Please enter text to translate.")
+            st.warning("Please enter text first.")
         else:
             with st.spinner("Translating..."):
-                try:
-                    if direction == "German → English":
-                        out = de_to_en(text_in)
-                    elif direction == "English → German":
-                        out = en_to_de(text_in)
-                    elif direction == "English → Nepali":
-                        out = en_to_ne(text_in)
-                    elif direction == "Nepali → English":
-                        out = ne_to_en(text_in)
-                    elif direction == "German → Nepali (via English)":
-                        out = de_to_ne(text_in)
-                    elif direction == "Nepali → German (via English)":
-                        out = ne_to_de(text_in)
-                    st.success("✅ Translation Complete")
-                    st.text_area("Translated Text:", value=out, height=250)
-                except Exception as e:
-                    st.error(f"Translation failed: {e}")
-            clear_memory()
+                if direction == "German → English":
+                    out = de_to_en(text_in)
+                elif direction == "English → German":
+                    out = en_to_de(text_in)
+                elif direction == "English → Nepali":
+                    out = en_to_ne(text_in)
+                elif direction == "Nepali → English":
+                    out = ne_to_en(text_in)
+                elif direction == "German → Nepali (via English)":
+                    out = de_to_ne(text_in)
+                else:
+                    out = ne_to_de(text_in)
+            st.success("✅ Translation Complete")
+            st.text_area("Translated Text:", out, height=200)
+
+            # TTS output
+            tts_lang = "en"
+            if "German" in direction: tts_lang = "de"
+            elif "Nepali" in direction: tts_lang = "ne"
+            tts_html = text_to_speech(out, tts_lang)
+            if tts_html:
+                st.markdown(tts_html, unsafe_allow_html=True)
+                with open("temp_tts.mp3", "rb") as audio_f:
+                    st.download_button("⬇️ Download Translated Audio", data=audio_f, file_name="translated_audio.mp3")
 
 st.markdown("---")
-st.caption("Designed for Nepali students.")
+st.caption("Optimized for Nepali Students.")
