@@ -180,17 +180,78 @@ if mode.startswith("🎤"):
                 st.download_button("⬇️ Download Translated Audio", data=audio_f, file_name="translated_audio.mp3")
 
 # ---------------- OCR ----------------
+from langdetect import detect, DetectorFactory
+DetectorFactory.seed = 0  # ensures consistent detection
+
 elif mode.startswith("🖼️"):
-    st.subheader("Upload Image for OCR")
+    st.subheader("Upload Image for OCR & Translation")
     img_file = st.file_uploader("Image", type=["jpg", "jpeg", "png"])
+
     if img_file:
         img = resize_image(img_file)
         st.image(img, caption="Processed Image (Resized <1MB)", use_column_width=True)
-        with st.spinner("Extracting text..."):
+
+        with st.spinner("🔍 Extracting text from image..."):
             reader = get_ocr()
             text = "\n".join(reader.readtext(np.array(img), detail=0))
-        st.success("✅ OCR Complete")
-        st.text_area("Extracted Text:", text, height=200)
+
+        if not text.strip():
+            st.warning("No readable text found in the image.")
+        else:
+            st.success("✅ OCR Complete")
+            st.text_area("Extracted Text:", text, height=200)
+
+            # ---------- Accurate Language Detection ----------
+            try:
+                detected_lang = detect(text)
+            except Exception:
+                detected_lang = "en"  # fallback if detection fails
+
+            lang_map = {"de": "German", "en": "English", "ne": "Nepali"}
+            src_lang = lang_map.get(detected_lang, "English")
+
+            st.markdown(f"**Detected Language:** {src_lang}")
+
+            # ---------- Translation ----------
+            target_lang = st.selectbox(
+                "Translate To:", ["English", "German", "Nepali"], index=0
+            )
+
+            if st.button("Translate Extracted Text"):
+                with st.spinner(f"🌐 Translating from {src_lang} → {target_lang}..."):
+                    if src_lang == "German" and target_lang == "English":
+                        translated = de_to_en(text)
+                    elif src_lang == "German" and target_lang == "Nepali":
+                        translated = de_to_ne(text)
+                    elif src_lang == "English" and target_lang == "German":
+                        translated = en_to_de(text)
+                    elif src_lang == "English" and target_lang == "Nepali":
+                        translated = en_to_ne(text)
+                    elif src_lang == "Nepali" and target_lang == "English":
+                        translated = ne_to_en(text)
+                    elif src_lang == "Nepali" and target_lang == "German":
+                        translated = ne_to_de(text)
+                    else:
+                        translated = text
+
+                st.success("✅ Translation Complete")
+                st.text_area("Translated Text:", translated, height=200)
+
+                # ---------- Optional TTS ----------
+                tts_lang = "en"
+                if target_lang == "German": tts_lang = "de"
+                elif target_lang == "Nepali": tts_lang = "ne"
+
+                tts_html = text_to_speech(translated, tts_lang)
+                if tts_html:
+                    st.markdown(tts_html, unsafe_allow_html=True)
+                    with open("temp_tts.mp3", "rb") as audio_f:
+                        st.download_button(
+                            "⬇️ Download Translated Audio",
+                            data=audio_f,
+                            file_name="ocr_translation.mp3"
+                        )
+
         clear_memory()
 
 # ---------------- TEXT ----------------
