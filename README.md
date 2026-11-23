@@ -1,108 +1,193 @@
-# German Tutor — Multimodal Language Translation Prototype
+# German Tutor — Multilingual Translation Assistant
 
-German Tutor is an academic AI application developed as a final-examination project. It explores how speech recognition, machine translation, optical character recognition (OCR), and text-to-speech can be combined in one Streamlit interface to support language access for Nepali learners.
+A Streamlit-based multilingual translation prototype combining text translation, audio transcription, image-based text extraction (OCR), and text-to-speech in a single application.
 
-> **Project status:** Academic prototype. The repository documents the original project and its current capabilities; it is not presented as a production-ready language-learning platform.
+Developed as an academic project, German Tutor explores how machine learning and speech-processing tools can make language translation more accessible, particularly for learners working across German, English, and Nepali.
 
-## What it does
+## Overview
 
-- **Text translation:** German ↔ English, English ↔ Nepali, and German ↔ Nepali (through English).
-- **Audio transcription:** Accepts MP3, WAV, and M4A uploads and uses OpenAI Whisper (base) for speech-to-text.
-- **Image text extraction:** Uses EasyOCR to extract text from JPG, JPEG, and PNG images.
-- **Language detection:** Uses langdetect in the OCR workflow and a basic heuristic in the audio workflow.
-- **Speech output:** Uses Google Text-to-Speech (gTTS) to generate downloadable translated audio.
+German Tutor brings multiple language-processing workflows into one interface. Users can enter text, upload audio, or upload an image containing text and process the content through the application's translation and speech workflows.
 
-## How it works
+The application combines pretrained NLP models, speech recognition, OCR, language detection, and speech synthesis.
 
-\`\`\`mermaid
-flowchart TD
-    A[User input] --> B{Input type}
-    B -->|Text| C[Translation models]
-    B -->|Audio| D[Whisper speech recognition]
-    D --> C
-    B -->|Image| E[EasyOCR text extraction]
-    E --> F[Language detection]
-    F --> C
-    C --> G[Translated text]
-    G --> H[gTTS speech output]
-\`\`\`
+## Features
 
-## Models and tools
+### 1. Text Translation
 
-| Component | Technology |
+- Translate text between supported languages.
+- German–English translation.
+- English–Nepali translation.
+- German–Nepali translation workflow through English.
+- Simple interface for entering text and selecting translation direction.
+
+### 2. Audio Translation
+
+- Upload audio files for processing.
+- Audio transcription using Whisper.
+- Translation of transcribed text.
+- Speech output using text-to-speech.
+- Playback and download of generated audio.
+
+Supported audio upload formats include MP3, WAV, and M4A.
+
+### 3. Image OCR
+
+- Upload images containing printed or written text.
+- Extract text using EasyOCR.
+- Detect the language of extracted text.
+- Translate extracted text into a selected target language.
+- Generate speech output from translated text.
+
+Supported image formats include JPG, JPEG, and PNG.
+
+### 4. Text-to-Speech
+
+Translated text can be converted into speech for listening and language practice.
+
+Users can play the generated audio directly in the application and download the audio output.
+
+## Application Workflow
+
+### Text Translation
+
+Text Input → Select Translation Direction → Translation → Audio Output
+
+### Audio Translation
+
+Audio Upload → Speech Recognition → Transcribed Text → Translation → Speech Output
+
+### Image OCR
+
+Image Upload → OCR Text Extraction → Language Detection → Translation → Speech Output
+
+## Screenshots
+
+### Main Interface
+
+![German Tutor Main Interface](assets/screenshots/01-main-interface.png)
+![Text Translation](assets/screenshots/02-text-translation.png)
+![Image OCR Input](assets/screenshots/03-ocr-input.png)
+![Image OCR Result](assets/screenshots/04-ocr-result.png)
+## Technology Stack
+
+| Technology | Purpose |
 |---|---|
-| App interface | Streamlit |
-| Speech recognition | OpenAI Whisper base |
-| German ↔ English translation | Helsinki-NLP OPUS-MT |
-| English ↔ Nepali translation | Hugging Face MarianMT models |
-| Image OCR | EasyOCR |
-| Language detection | langdetect |
-| Text-to-speech | gTTS |
-| Core language | Python |
+| Python | Application logic |
+| Streamlit | Web interface |
+| Hugging Face Transformers | Translation models |
+| MarianMT | Machine translation |
+| Whisper | Speech recognition and transcription |
+| EasyOCR | Image text extraction |
+| gTTS | Text-to-speech generation |
+| PyTorch | Machine learning framework |
+| Langdetect | Language detection |
+| Librosa | Audio processing |
+| Pillow | Image handling |
 
-## Run locally
+## Models Used
 
-### 1. Clone the repository
+| Model / Library | Application |
+|---|---|
+| `Helsinki-NLP/opus-mt-de-en` | German to English translation |
+| `Helsinki-NLP/opus-mt-en-de` | English to German translation |
+| `Hemg/english-To-Nepali-TRanslate` | English to Nepali translation |
+| `iamTangsang/MarianMT-Nepali-to-English` | Nepali to English translation |
+| `openai/whisper-base` | Audio transcription |
+| EasyOCR | Image text extraction |
 
-\`\`\`bash
+## Installation
+
+### Requirements
+
+- Python
+- FFmpeg
+- Git
+
+### Setup
+
+Clone the repository:
+
+```bash
 git clone https://github.com/raverer/German-Tutor.git
 cd German-Tutor
-\`\`\`
+```
 
-### 2. Create and activate a virtual environment
+Create a virtual environment:
 
-\`\`\`bash
-python3 -m venv .venv
+```bash
+python -m venv .venv
+```
+
+Activate it:
+
+**macOS / Linux**
+
+```bash
 source .venv/bin/activate
-\`\`\`
+```
 
-On Windows, activate it with:
+Install dependencies:
 
-\`\`\`powershell
-.venv\\Scripts\\activate
-\`\`\`
-
-### 3. Install dependencies
-
-\`\`\`bash
-python -m pip install --upgrade pip
+```bash
 pip install -r requirements.txt
-\`\`\`
+```
 
-Whisper also requires **FFmpeg** to be installed and available on your system path. On macOS with Homebrew:
+Run the application:
 
-\`\`\`bash
-brew install ffmpeg
-\`\`\`
-
-### 4. Start the app
-
-\`\`\`bash
+```bash
 streamlit run app.py
-\`\`\`
+```
 
-The first run may take time because the required Hugging Face models are downloaded.
+The application will open in your browser.
 
-## Current limitations and next improvements
+## Project Structure
 
-This repository is an academic prototype, and several areas need further engineering before production use:
+```text
+German-Tutor/
+├── app.py
+├── requirements.txt
+├── packages.txt
+├── runtime.txt
+├── streamlit.toml
+├── assets/
+│   └── screenshots/
+│       ├── 01-main-interface.png
+│       ├── 02-text-translation.png
+│       ├── 03-ocr-input.png
+│       └── 04-ocr-result.png
+└── README.md
+```
 
-- The audio transcription path currently passes an English-language hint to Whisper; German and Nepali audio need proper language selection or multilingual handling.
-- OCR is initialised with an English reader, so recognition quality for other scripts/languages is not guaranteed.
-- Audio language detection uses a simple character-based heuristic; it should be replaced with a reliable language-identification workflow.
-- German ↔ Nepali translation is performed through English, which can introduce meaning loss.
-- The current Streamlit application contains multiple mode selectors and would benefit from a unified navigation flow and modular code structure.
-- Temporary audio files and error handling need improvement for concurrent and deployed use.
-- Translation quality, OCR accuracy, and transcription quality have not yet been benchmarked systematically.
+## Limitations
 
-## Academic context
+This project is a functional prototype and has limitations:
 
-Built as a final-examination project to explore practical integration of pretrained NLP and computer-vision models into an accessible application. The project helped develop hands-on experience with Python, Streamlit, Hugging Face Transformers, speech processing, OCR, and model integration.
+- Audio language handling relies partly on heuristics.
+- Whisper transcription currently uses an English-language hint in the workflow, which can affect transcription accuracy for other languages.
+- OCR accuracy depends on image quality, font, contrast, layout, and handwriting.
+- OCR processing currently uses an English-configured reader, which may affect multilingual text extraction.
+- German–Nepali translation may use English as an intermediate language.
+- Translation and transcription quality have not been formally benchmarked.
+- Processing time depends on the hardware and model loading requirements.
 
-## Disclaimer
+These limitations represent opportunities for further development, including improved language identification, multilingual OCR, model evaluation, better audio handling, and interface refinement.
 
-Machine-generated translations and transcriptions may contain errors. Do not rely on this prototype for legal, medical, immigration, or other high-stakes translation.
+## Future Improvements
 
-## Repository
+- More robust multilingual speech recognition.
+- Improved language detection.
+- Multilingual OCR support.
+- Translation quality evaluation.
+- Better handling of long audio files.
+- Improved error handling and temporary-file management.
+- User experience and interface improvements.
 
-[https://github.com/raverer/German-Tutor](https://github.com/raverer/German-Tutor)
+## Academic Context
+
+German Tutor was developed as an academic project exploring the integration of machine learning-based translation, speech recognition, OCR, and speech synthesis into a practical language-processing application.
+
+The project demonstrates the application of pretrained models and Python-based tools to build an integrated multilingual workflow.
+
+---
+
+**Built with Python, Streamlit, and open-source language-processing models.**
